@@ -7,10 +7,10 @@ Pod::Spec.new do |s|
                           intention of being an audio and video manipulation
                           and streaming pipeline for iOS.
                           DESC
-  s.homepage            = "https://github.com/jgh-/VideoCore"
+  s.homepage            = "https://github.com/PyHuT/RTMPCinaMaker"
   s.license             = 'MIT'
-  s.authors             = { "James Hurley" => "jamesghurley@gmail.com" }
-  s.source              = { :git => "https://github.com/jgh-/VideoCore.git", :tag => s.version.to_s }
+  s.authors             = { "Ihor Holia" => "pyhut1k@gmail.com" }
+  s.source              = { :git => "https://github.com/PyHuT/RTMPCinaMaker", :tag => s.version.to_s }
 
   s.requires_arc        = false
 
