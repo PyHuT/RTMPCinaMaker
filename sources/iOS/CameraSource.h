@@ -51,30 +51,28 @@ namespace videocore { namespace iOS {
         /*! ISource::setOutput */
         void setOutput(std::shared_ptr<IOutput> output);
         
-        /*! 
+        /*!
          *  Get the AVCaptureVideoPreviewLayer associated with the camera output.
          *
          *  \param outAVCaputreVideoPreviewLayer a pointer to an AVCaptureVideoPreviewLayer pointer.
          */
         void getPreviewLayer(void** outAVCaptureVideoPreviewLayer);
-
+        
         /*!
          *  Setup camera properties
          *
          *  \param fps      Optional parameter to set the output frames per second.
          *  \param useFront Start with the front-facing camera
          *  \param useInterfaceOrientation whether to use interface or device orientation as reference for video capture orientation
-         *  \param sessionPreset name of the preset to use for the capture session
-         *  \param callbackBlock block to be called after everything is set
          */
-        void setupCamera(int fps = 15, bool useFront = true, bool useInterfaceOrientation = false, NSString* sessionPreset = nil, void (^callbackBlock)(void) = nil);
-
+        void setupCamera(int fps = 15, bool useFront = true, bool useInterfaceOrientation = false, NSString* sessionPreset = nil);
+        
         
         /*!
          *  Toggle the camera between front and back-facing cameras.
          */
         void toggleCamera();
-
+        
         /*!
          * If the orientation is locked, we ignore device / interface
          * orientation changes.
@@ -95,7 +93,7 @@ namespace videocore { namespace iOS {
          *  Attempt to turn the torch mode on or off.
          *
          *  \param torchOn  Bool indicating whether the torch should be on or off.
-         *  
+         *
          *  \return the actual state of the torch.
          */
         bool setTorch(bool torchOn);
@@ -121,14 +119,14 @@ namespace videocore { namespace iOS {
         
         /*! Used by Objective-C Device/Interface Orientation Notifications */
         void reorientCamera();
-        
+        void* m_captureSession;
     private:
         
-        /*! 
+        /*!
          * Get a camera with a specified position
          *
          * \param position The position to search for.
-         * 
+         *
          * \return the camera device, if found.
          */
         void* cameraWithPosition(int position);
@@ -140,7 +138,7 @@ namespace videocore { namespace iOS {
         
         std::weak_ptr<IOutput> m_output;
         
-        void* m_captureSession;
+        
         void* m_captureDevice;
         void* m_callbackSession;
         void* m_previewLayer;
@@ -149,7 +147,7 @@ namespace videocore { namespace iOS {
         bool m_torchOn;
         bool m_useInterfaceOrientation;
         bool m_orientationLocked;
-
+        
     };
     
 }

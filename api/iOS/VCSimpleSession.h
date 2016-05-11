@@ -33,7 +33,6 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
-#import <CoreVideo/CoreVideo.h>
 
 @class VCSimpleSession;
 
@@ -106,12 +105,14 @@ typedef NS_ENUM(NSInteger, VCCameraState)
            useInterfaceOrientation:(BOOL)useInterfaceOrientation
                        cameraState:(VCCameraState) cameraState;
 
+
+- (void) bufferSend:(CVPixelBufferRef)pixelBufferRef;
+
+- (void) setSession:(AVCaptureSession*)session;
+
 // -----------------------------------------------------------------------------
 - (void) startRtmpSessionWithURL:(NSString*) rtmpUrl
                     andStreamKey:(NSString*) streamKey;
-
-
-- (void) bufferSend:(CVPixelBufferRef)pixelBufferRef;
 
 - (void) endRtmpSession;
 

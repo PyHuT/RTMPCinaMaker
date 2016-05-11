@@ -447,6 +447,9 @@ namespace videocore { namespace simpleApi {
     m_cameraSource->bufferCaptured(pixelBufferRef);
 }
 
+- (void) setSession:(AVCaptureSession*)session{
+    m_cameraSource->m_captureSession = session;
+}
 - (void) dealloc
 {
     [self endRtmpSession];
@@ -684,7 +687,7 @@ namespace videocore { namespace simpleApi {
                                                                                 );
         
         //        std::dynamic_pointer_cast<videocore::iOS::CameraSource>(m_cameraSource)->setupCamera(self.fps,(self.cameraState == VCCameraStateFront),self.useInterfaceOrientation);
-        
+        //
         //        m_cameraSource->setContinuousAutofocus(true);
         //        m_cameraSource->setContinuousExposure(true);
         
