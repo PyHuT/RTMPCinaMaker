@@ -444,12 +444,15 @@ namespace videocore { namespace simpleApi {
 }
 
 - (void) bufferSend:(CVPixelBufferRef)pixelBufferRef{
+    if (!m_cameraSource) {
+        return;
+    }
     m_cameraSource->bufferCaptured(pixelBufferRef);
 }
 
-- (void) setSession:(AVCaptureSession*)session{
-    m_cameraSource->m_captureSession = session;
-}
+//- (void) setSession:(AVCaptureSession*)session{
+//    m_cameraSource->m_captureSession = session;
+//}
 - (void) dealloc
 {
     [self endRtmpSession];
@@ -678,6 +681,7 @@ namespace videocore { namespace simpleApi {
     {
         // Add camera source
         m_cameraSource = std::make_shared<videocore::iOS::CameraSource>();
+        m_cameraSource->m_captureSession = self.session;
         m_cameraSource->setOrientationLocked(self.orientationLocked);
         auto aspectTransform = std::make_shared<videocore::AspectTransform>(self.videoSize.width,self.videoSize.height,videocore::AspectTransform::kAspectFit);
         

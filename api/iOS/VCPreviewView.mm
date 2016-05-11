@@ -164,7 +164,7 @@
 
 - (void) drawFrame:(CVPixelBufferRef)pixelBuffer
 {
-    
+    return;
     if(_paused) return;
     
     bool updateTexture = false;

@@ -89,8 +89,8 @@ namespace videocore { namespace iOS {
     {
         
         if(m_captureSession) {
-            [((AVCaptureSession*)m_captureSession) stopRunning];
-            [((AVCaptureSession*)m_captureSession) release];
+//            [((AVCaptureSession*)m_captureSession) stopRunning];
+//            [((AVCaptureSession*)m_captureSession) release];
         }
         if(m_callbackSession) {
             [[NSNotificationCenter defaultCenter] removeObserver:(id)m_callbackSession];

@@ -67,6 +67,7 @@ typedef NS_ENUM(NSInteger, VCCameraState)
 @property (nonatomic, strong, readonly) UIView* previewView;
 
 /*! Setters / Getters for session properties */
+@property (nonatomic, assign) AVCaptureSession* session;
 @property (nonatomic, assign) CGSize            videoSize;      // Change will not take place until the next RTMP Session
 @property (nonatomic, assign) int               bitrate;        // Change will not take place until the next RTMP Session
 @property (nonatomic, assign) int               fps;            // Change will not take place until the next RTMP Session
