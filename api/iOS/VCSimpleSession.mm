@@ -361,6 +361,23 @@ namespace videocore { namespace simpleApi {
 #pragma mark - Public Methods
 // -----------------------------------------------------------------------------
 
+-(instancetype)initWithVideoSize:(CGSize)videoSize
+                       frameRate:(int)fps
+                         bitrate:(int)bps
+                         session:(AVCaptureSession *)session{
+    if((self = [super init])) {
+        [self initInternalWithVideoSize:videoSize
+                              frameRate:fps
+                                bitrate:bps
+                useInterfaceOrientation:NO
+                            cameraState:VCCameraStateBack];
+        self.session = session;
+        
+    }
+    return self;
+
+}
+
 - (instancetype) initWithVideoSize:(CGSize)videoSize
                          frameRate:(int)fps
                            bitrate:(int)bps
@@ -773,6 +790,14 @@ namespace videocore { namespace simpleApi {
     
     
 }
+
+- (void)setEpouch{
+    const auto epoch = std::chrono::steady_clock::now();
+    
+    m_audioMixer->setEpoch(epoch);
+    m_videoMixer->setEpoch(epoch);
+}
+
 - (NSString *) applicationDocumentsDirectory
 {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
