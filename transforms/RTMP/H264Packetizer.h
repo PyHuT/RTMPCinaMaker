@@ -36,7 +36,7 @@ namespace videocore { namespace rtmp {
     {
     public:
         
-        H264Packetizer(int ctsOffset=0);
+        H264Packetizer();
         
     public:
         void pushBuffer(const uint8_t* const data, size_t size, IMetadata& metadata);
@@ -54,8 +54,6 @@ namespace videocore { namespace rtmp {
         double m_videoTs;
         
         std::vector<uint8_t> configurationFromSpsAndPps();
-        
-        int  m_ctsOffset;
         
         bool m_sentConfig;
     };

@@ -53,7 +53,7 @@
 namespace videocore {
     namespace Apple {
         
-        StreamSession::StreamSession() : m_status(0), m_runLoop(nullptr), m_outputStream(nullptr), m_inputStream(nullptr)
+        StreamSession::StreamSession() : m_status(0)
         {
             m_streamCallback = [[NSStreamCallback alloc] init];
             SCB(m_streamCallback).session = this;
@@ -83,16 +83,10 @@ namespace videocore {
                 m_outputStream = (NSOutputStream*)writeStream;
             
 
-                dispatch_queue_t queue = dispatch_queue_create("com.videocore.network", 0);
                 
-                if(m_inputStream && m_outputStream) {
-                    dispatch_async(queue, ^{
-                        this->startNetwork();
-                    });
-                }
-                else {
-                    nsStreamCallback(nullptr, NSStreamEventErrorOccurred);
-                }
+                dispatch_async(dispatch_get_global_queue(0, 0), ^{
+                    this->startNetwork();
+                });
             }
 
         }
@@ -100,22 +94,10 @@ namespace videocore {
         void
         StreamSession::disconnect()
         {
-            if(m_outputStream) {
-                [NSOS(m_outputStream) close];
-                [NSOS(m_outputStream) release];
-                m_outputStream = nullptr;
-            }
-            if(m_inputStream) {
-                [NSIS(m_inputStream) close];
-                [NSIS(m_inputStream) release];
-                m_inputStream = nullptr;
-            }
-
-            if(m_runLoop) {
-                CFRunLoopStop([NSRL(m_runLoop) getCFRunLoop]);
-                [(id)m_runLoop release];
-                m_runLoop = nullptr;
-            }
+            [NSIS(m_inputStream) close];
+            [NSOS(m_outputStream) close];
+            [NSIS(m_inputStream) release];
+            [NSOS(m_outputStream) release];
         }
         int
         StreamSession::unsent()
@@ -134,9 +116,9 @@ namespace videocore {
         {
             NSInteger ret = 0;
           
-            if( NSOS(m_outputStream).hasSpaceAvailable ) {
-                ret = [NSOS(m_outputStream) write:buffer maxLength:size];
-            }
+            
+            ret = [NSOS(m_outputStream) write:buffer maxLength:size];
+            
             if(ret >= 0 && ret < size && (m_status & kStreamStatusWriteBufferHasSpace)) {
                 // Remove the Has Space Available flag
                 m_status ^= kStreamStatusWriteBufferHasSpace;
@@ -180,6 +162,14 @@ namespace videocore {
                    NSOS(m_outputStream).streamStatus > 0 &&
                    NSIS(m_inputStream).streamStatus < 5 &&
                    NSOS(m_outputStream).streamStatus < 5) {
+                    // Connected.
+                    CFDataRef nativeSocket = (CFDataRef)CFWriteStreamCopyProperty((CFWriteStreamRef)m_outputStream, kCFStreamPropertySocketNativeHandle);
+                    CFSocketNativeHandle *sock = (CFSocketNativeHandle *)CFDataGetBytePtr(nativeSocket);
+                    m_outSocket = *sock;
+                    int v = 1;
+                    setsockopt(*sock, IPPROTO_TCP, TCP_NODELAY, &v, sizeof(int));
+                    CFRelease(nativeSocket);
+
                     setStatus(kStreamStatusConnected, true);
                 } else return;
             }
@@ -194,9 +184,8 @@ namespace videocore {
             }
             if(event & NSStreamEventErrorOccurred) {
                 setStatus(kStreamStatusErrorEncountered, true);
-                if(stream) {
-                    [[NSNotificationCenter defaultCenter] postNotificationName:@"com.videocore.stream.error" object:((NSStream*)stream).streamError];
-                }
+                NSLog(@"Status: %d\n", (int)((NSStream*)stream).streamStatus);
+                NSLog(@"Error: %@", ((NSStream*)stream).streamError);
             }
         }
         
@@ -211,7 +200,6 @@ namespace videocore {
             [NSOS(m_outputStream) open];
             [NSIS(m_inputStream) open];
 
-            [(id)m_runLoop retain];
             [NSRL(m_runLoop) run];
         }
         

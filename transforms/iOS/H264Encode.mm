@@ -33,8 +33,7 @@
 namespace videocore { namespace iOS {
     
     H264Encode::H264Encode( int frame_w, int frame_h, int fps, int bitrate )
-    : m_lastFilePos(0), m_frameCount(0), m_frameW(frame_w), m_frameH(frame_h), m_fps(fps),  m_bitrate(bitrate), m_currentWriter(0),
-    m_queue("com.videcore.h264.7")
+    : m_lastFilePos(0), m_frameCount(0), m_frameW(frame_w), m_frameH(frame_h), m_fps(fps),  m_bitrate(bitrate), m_currentWriter(0)
     {
         m_tmpFile[0] = [[NSTemporaryDirectory() stringByAppendingString:@"tmp1.mov"] UTF8String];
         m_tmpFile[1] = [[NSTemporaryDirectory() stringByAppendingString:@"tmp2.mov"] UTF8String];
@@ -104,12 +103,9 @@ namespace videocore { namespace iOS {
             time.timescale = m_fps;
             time.flags = kCMTimeFlags_Valid;
             
-            @try {
-                [(id)m_assetWriters[wid] startWriting];
-                [(id)m_assetWriters[wid] startSessionAtSourceTime:time];
-            } @catch (NSException* e) {
-                teardownWriter(wid);
-            }
+            [(id)m_assetWriters[wid] startWriting];
+            [(id)m_assetWriters[wid] startSessionAtSourceTime:time];
+            
         }
         return true;
     }

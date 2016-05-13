@@ -39,40 +39,39 @@
 namespace videocore
 {
     RTMPSession::RTMPSession(std::string uri, RTMPSessionStateCallback callback)
-    : m_streamOutRemainder(65536),m_streamInBuffer(new RingBuffer(4096)), m_callback(callback), m_bandwidthCallback(nullptr), m_outChunkSize(128), m_inChunkSize(128), m_bufferSize(0), m_streamId(0),  m_createStreamInvoke(0), m_numberOfInvokes(0), m_state(kClientStateNone), m_ending(false),
-    m_jobQueue("com.videocore.rtmp"), m_networkQueue("com.videocore.rtmp.network"), m_previousTs(0), m_clearing(false)
+    : m_streamOutRemainder(65536),m_streamInBuffer(new RingBuffer(4096)), m_uri(http::ParseHttpUrl(uri)), m_callback(callback), m_bandwidthCallback(nullptr), m_outChunkSize(128), m_inChunkSize(128), m_streamId(0),  m_createStreamInvoke(0), m_numberOfInvokes(0), m_state(kClientStateNone), m_ending(false)
     {
 #ifdef __APPLE__
         m_streamSession.reset(new Apple::StreamSession());
 #endif
-        
-        
         boost::char_separator<char> sep("/");
-        boost::tokenizer<boost::char_separator<char>> uri_tokens(uri, sep);
-        
-        // http::ParseHttpUrl is destructive to the parameter passed in.
-        std::string uri_cpy(uri);
-        m_uri = http::ParseHttpUrl(uri_cpy);
         boost::tokenizer<boost::char_separator<char> > tokens(m_uri.path, sep );
         
-        
-        int tokenCount = 0;
+        auto itr = tokens.begin();
         std::stringstream pp;
-        for ( auto it = uri_tokens.begin() ; it != uri_tokens.end() ; ++it) {
-            if(tokenCount++ < 2) { // skip protocol and host/port
-                continue;
+        {
+            std::stringstream app;
+            for (; itr != tokens.end() ; ++itr) {
+                auto peek = itr;
+                ++peek;
+                if (peek == tokens.end()) {
+                    pp << *itr;
+                    break;
+                }
+                app << *itr <<  "/";
             }
-            if(tokenCount == 3) {
-                m_app = *it;
-            } else {
-                pp << *it << "/";
-            }
+            m_app = app.str();
+            m_app.pop_back();
         }
-        
-        m_playPath = pp.str();
-        m_playPath.pop_back();
-        
+        {
+            if(m_uri.search.length() > 0) {
+                pp << "?" << m_uri.search;
+            }
+            m_playPath = pp.str();
+        }
         long port = (m_uri.port > 0) ? m_uri.port : 1935;
+        
+        m_jobQueue.set_name("com.videocore.rtmp");
         
         m_streamSession->connect(m_uri.host, static_cast<int>(port), [&](IStreamSession& session, StreamStatus_t status) {
             streamStatusChanged(status);
@@ -81,15 +80,11 @@ namespace videocore
     }
     RTMPSession::~RTMPSession()
     {
-        DLog("~RTMPSession");
         if(m_state == kClientStateConnected) {
             sendDeleteStream();
         }
         m_ending = true;
-        m_jobQueue.mark_exiting();
         m_jobQueue.enqueue_sync([]() {});
-        m_networkQueue.mark_exiting();
-        m_networkQueue.enqueue_sync([]() {});
     }
     void
     RTMPSession::setSessionParameters(videocore::IMetadata &parameters)
@@ -120,123 +115,156 @@ namespace videocore
         buf->put(const_cast<uint8_t*>(data), size);
         
         const RTMPMetadata_t inMetadata = static_cast<const RTMPMetadata_t&>(metadata);
-
-        m_jobQueue.enqueue([=]() {
+        
+        m_jobQueue.enqueue([&,buf,inMetadata]() {
+            static int c_count = 0;
+            c_count ++;
             
-            if(!this->m_ending) {
-                static int c_count = 0;
-                c_count ++;
+            auto packetTime = std::chrono::steady_clock::now();
+            
+            std::vector<uint8_t> chunk;
+            std::vector<uint8_t> & outb = this->m_outBuffer;
+            size_t len = buf->size();
+            size_t tosend = std::min(len, m_outChunkSize);
+            uint8_t* p;
+            buf->read(&p, buf->size());
+            uint64_t ts = inMetadata.getData<kRTMPMetadataTimestamp>() ;
+            const int streamId = inMetadata.getData<kRTMPMetadataMsgStreamId>();
+            
+            auto it = m_previousChunkData.find(streamId);
+            if(it == m_previousChunkData.end()) {
+                // Type 0.
+                put_byte(chunk, ( streamId & 0x1F));
+                put_be24(chunk, static_cast<uint32_t>(ts));
+                put_be24(chunk, inMetadata.getData<kRTMPMetadataMsgLength>());
+                put_byte(chunk, inMetadata.getData<kRTMPMetadataMsgTypeId>());
+                put_buff(chunk, (uint8_t*)&m_streamId, sizeof(int32_t)); // msg stream id is little-endian
+            } else {
+                // Type 1.
+                put_byte(chunk, RTMP_CHUNK_TYPE_1 | (streamId & 0x1F));
+                put_be24(chunk, static_cast<uint32_t>(ts - it->second)); // timestamp delta
+                put_be24(chunk, inMetadata.getData<kRTMPMetadataMsgLength>());
+                put_byte(chunk, inMetadata.getData<kRTMPMetadataMsgTypeId>());
+            }
+            m_previousChunkData[streamId] = ts;
+            put_buff(chunk, p, tosend);
+            
+            outb.insert(outb.end(), chunk.begin(), chunk.end());
+            
+            
+            len -= tosend;
+            p += tosend;
+            
+            
+            this->write(&outb[0], outb.size(), packetTime);
+            outb.clear();
+            
+            while(len > 0) {
+                tosend = std::min(len, m_outChunkSize);
+                p[-1] = RTMP_CHUNK_TYPE_3 | (streamId & 0x1F);
                 
-                auto packetTime = std::chrono::steady_clock::now();
-                
-                std::vector<uint8_t> chunk;
-                std::shared_ptr<std::vector<uint8_t>> outb = std::make_shared<std::vector<uint8_t>>();
-                outb->reserve(size + 64);
-                size_t len = buf->size();
-                size_t tosend = std::min(len, m_outChunkSize);
-                uint8_t* p;
-                buf->read(&p, buf->size());
-                uint64_t ts = inMetadata.getData<kRTMPMetadataTimestamp>() ;
-                const int streamId = inMetadata.getData<kRTMPMetadataMsgStreamId>();
-                
-#ifndef RTMP_CHUNK_TYPE_0_ONLY
-                auto it = m_previousChunkData.find(streamId);
-                if(it == m_previousChunkData.end()) {
-#endif
-                    // Type 0.
-                    put_byte(chunk, ( streamId & 0x1F));
-                    put_be24(chunk, static_cast<uint32_t>(ts));
-                    put_be24(chunk, inMetadata.getData<kRTMPMetadataMsgLength>());
-                    put_byte(chunk, inMetadata.getData<kRTMPMetadataMsgTypeId>());
-                    put_buff(chunk, (uint8_t*)&m_streamId, sizeof(int32_t)); // msg stream id is little-endian
-#ifndef RTMP_CHUNK_TYPE_0_ONLY
-                } else {
-                    // Type 1.
-                    put_byte(chunk, RTMP_CHUNK_TYPE_1 | (streamId & 0x1F));
-                    put_be24(chunk, static_cast<uint32_t>(ts - it->second)); // timestamp delta
-                    put_be24(chunk, inMetadata.getData<kRTMPMetadataMsgLength>());
-                    put_byte(chunk, inMetadata.getData<kRTMPMetadataMsgTypeId>());
-                }
-#endif
-                m_previousChunkData[streamId] = ts;
-                put_buff(chunk, p, tosend);
-                
-                outb->insert(outb->end(), chunk.begin(), chunk.end());
-                
-                len -= tosend;
-                p += tosend;
-                
-                while(len > 0) {
-                    tosend = std::min(len, m_outChunkSize);
-                    p[-1] = RTMP_CHUNK_TYPE_3 | (streamId & 0x1F);
-                    
-                    outb->insert(outb->end(), p-1, p+tosend);
-                    p+=tosend;
-                    len-=tosend;
-                    //  this->write(&outb[0], outb.size(), packetTime);
-                    //  outb.clear();
-                    
-                }
-                
-                this->write(&(*outb)[0], outb->size(), packetTime, inMetadata.getData<kRTMPMetadataIsKeyframe>() );
+                outb.insert(outb.end(), p-1, p+tosend);
+                p+=tosend;
+                len-=tosend;
+                this->write(&outb[0], outb.size(), packetTime);
+                outb.clear();
+
             }
             
-            
+
         });
+        
     }
     void
     RTMPSession::sendPacket(uint8_t* data, size_t size, RTMPChunk_0 metadata)
     {
         RTMPMetadata_t md(0.);
         
-        md.setData(metadata.timestamp.data, metadata.msg_length.data, metadata.msg_type_id, metadata.msg_stream_id, false);
+        md.setData(metadata.timestamp.data, metadata.msg_length.data, metadata.msg_type_id, metadata.msg_stream_id);
         
         pushBuffer(data, size, md);
     }
     void
-    RTMPSession::increaseBuffer(int64_t size) {
-        m_bufferSize = std::max(m_bufferSize + size, 0LL);
-    }
-    void
-    RTMPSession::write(uint8_t* data, size_t size, std::chrono::steady_clock::time_point packetTime, bool isKeyframe)
+    RTMPSession::write(uint8_t* data, size_t size, std::chrono::steady_clock::time_point packetTime)
     {
-        //static std::chrono::steady_clock::time_point previousTimePoint = std::chrono::steady_clock::now();
+        static std::chrono::steady_clock::time_point previousTimePoint = std::chrono::steady_clock::now();
         
         if(size > 0) {
             std::shared_ptr<Buffer> buf = std::make_shared<Buffer>(size);
             buf->put(data, size);
-            
-            m_throughputSession.addBufferSizeSample(m_bufferSize);
-            
-            increaseBuffer(size);
-            if(isKeyframe) {
-                m_sentKeyframe = packetTime;
+            BufStruct b;
+            b.buf = buf;
+            b.time = packetTime;
+            m_streamOutQueue.push_back(b);
+            if(packetTime == previousTimePoint) {
+                return;
             }
-            if(m_bufferSize > 2000000 && isKeyframe) {
-                m_clearing = true;
-            }
-            m_networkQueue.enqueue([=]() {
-                size_t tosend = size;
-                uint8_t* p ;
-                buf->read(&p, size);
+        }
+        previousTimePoint = packetTime;
+        if(/*(m_streamSession->status() & kStreamStatusWriteBufferHasSpace) &&*/ m_streamOutRemainder.size()) {
+            
+            
+            size_t size = m_streamOutRemainder.size();
+            uint8_t* buffer = nullptr;
+            
+            size_t ret = m_streamOutRemainder.read(&buffer, size, false); // Read the entire buffer, but do not advance the read pointer.
+            
+            size_t sent = m_streamSession->write(buffer, ret);
+            
+            if( sent == ret && ret < size ) {
                 
-                while(tosend > 0 && !this->m_ending && (!this->m_clearing || this->m_sentKeyframe == packetTime)) {
-                    this->m_clearing = false;
-                    size_t sent = m_streamSession->write(p, tosend);
-                    p += sent;
-                    tosend -= sent;
-                    this->m_throughputSession.addSentBytesSample(sent);
-                    if( sent == 0 ) {
-                        std::unique_lock<std::mutex> l(m_networkMutex);
-                        m_networkCond.wait_until(l, std::chrono::steady_clock::now() + std::chrono::milliseconds(1000));
-                        
-                        l.unlock();
-                    }
-                }
-                this->increaseBuffer(-int64_t(size));
-            });
+                m_streamOutRemainder.read(&buffer, ret);
+                ret = m_streamOutRemainder.read(&buffer, size - ret, false);
+
+                m_throughputSession.addSentBytesSample(sent);
+                
+                sent = m_streamSession->write(buffer, ret);
+                
+            }
+            
+            m_throughputSession.addSentBytesSample(sent);
+            
+            m_streamOutRemainder.read(&buffer, sent);
         }
         
+        while( m_streamOutQueue.size() > 0 && m_streamOutRemainder.size() == 0) {
+            
+            std::shared_ptr<Buffer> front = m_streamOutQueue.front().buf;
+            size_t sent = 0;
+            
+            uint8_t* buf;
+            if(front) {
+                size_t size = front->size();
+                front->read(&buf, size);
+                sent = m_streamSession->write(buf, size);
+               
+                m_throughputSession.addSentBytesSample(sent);
+                
+                if ( sent > 0 ) {
+                    m_streamOutQueue.pop_front();
+                    if (sent < size) {
+                         m_streamOutRemainder.put(buf+sent, size-sent);
+                    }
+                }
+                
+                if(sent < size) {
+                    break;
+                }
+            }
+        }
+        
+        size_t bufferSize = m_streamOutRemainder.size();
+        int64_t bufDur = 0;
+        
+        for (auto & it : m_streamOutQueue) {
+            bufferSize += it.buf->size();
+        }
+        if(m_streamOutQueue.size() > 1) {
+            bufDur = std::chrono::duration_cast<std::chrono::milliseconds>(m_streamOutQueue.back().time - m_streamOutQueue.front().time).count();
+        }
+        m_throughputSession.addBufferDurationSample(bufDur);
+        m_throughputSession.addBufferSizeSample(bufferSize);
+     
     }
     void
     RTMPSession::dataReceived()
@@ -324,12 +352,10 @@ namespace videocore
         if(status & kStreamStatusWriteBufferHasSpace) {
             if(m_state < kClientStateHandshakeComplete) {
                 handshake();
-            } else { /*if (!m_ending) {
-                      m_jobQueue.enqueue([this]() {
-                      this->write(nullptr, 0);
-                      }); */
-                m_networkMutex.unlock();
-                m_networkCond.notify_one();
+            } else if (!m_ending) {
+                m_jobQueue.enqueue([this]() {
+                    this->write(nullptr, 0);
+                });
             }
         }
         if(status & kStreamStatusEndStream) {
@@ -435,7 +461,7 @@ namespace videocore
     {
         RTMPChunk_0 metadata = {{0}};
         metadata.msg_stream_id = kControlChannelStreamId;
-        metadata.msg_type_id = RTMP_PT_NOTIFY;
+        metadata.msg_type_id = RTMP_PT_INVOKE;
         std::vector<uint8_t> buff;
         put_string(buff, "releaseStream");
         put_double(buff, ++m_numberOfInvokes);
@@ -451,7 +477,7 @@ namespace videocore
     {
         RTMPChunk_0 metadata = {{0}};
         metadata.msg_stream_id = kControlChannelStreamId;
-        metadata.msg_type_id = RTMP_PT_NOTIFY;
+        metadata.msg_type_id = RTMP_PT_INVOKE;
         std::vector<uint8_t> buff;
         put_string(buff, "FCPublish");
         put_double(buff, ++m_numberOfInvokes);
@@ -616,18 +642,18 @@ namespace videocore
             std::vector<uint8_t> buff;
             put_byte(buff, 2);
             put_be24(buff, 0);
-            put_be24(buff, 10);
-            put_byte(buff, RTMP_PT_PING);
+            put_be24(buff, 6);
+            put_byte(buff, RTMP_PT_NOTIFY);
             put_buff(buff, (uint8_t*)&streamId, sizeof(int32_t));
             
             put_be16(buff, 3); // SetBufferTime
-            put_be32(buff, m_streamId);
             put_be32(buff, milliseconds);
             
             write(&buff[0], buff.size());
             
         });
-    }    bool
+    }
+    bool
     RTMPSession::handleMessage(uint8_t *p, uint8_t msgTypeId)
     {
         bool ret = true;
@@ -717,19 +743,14 @@ namespace videocore
         long ret = m_streamInBuffer->get(p, size, false);
         
         start = p;
-        
+
         if(!p) return false;
         
         while (ret>0) {
             int header_type = (p[0] & 0xC0) >> 6;
             p++;
             ret--;
-            
-            if (ret <= 0) {
-                ret = 0;
-                break;
-            }
-            
+
             switch(header_type) {
                 case RTMP_HEADER_TYPE_FULL:
                 {
@@ -765,7 +786,7 @@ namespace videocore
                     }
                     p+=chunk.msg_length.data;
                     ret -= chunk.msg_length.data;
-                    
+
                 }
                     break;
                     
@@ -800,7 +821,7 @@ namespace videocore
         int buflen=0;
         std::string command = get_string(p, buflen);
         int32_t pktId = int32_t(get_double(p+11));
-        
+
         DLog("pktId: %d\n", pktId);
         std::string trackedCommand ;
         auto it = m_trackedCommands.find(pktId) ;
@@ -833,14 +854,9 @@ namespace videocore
             std::string code = parseStatusCode(p + 3 + command.length());
             DLog("code : %s\n", code.c_str());
             if (code == "NetStream.Publish.Start") {
-                
+                sendSetChunkSize(4096);
                 sendHeaderPacket();
-                
-                sendSetChunkSize(getpagesize());
-                //sendSetBufferTime(2500);
-                
                 setClientState(kClientStateSessionStarted);
-                m_throughputSession.start();
             }
         }
         

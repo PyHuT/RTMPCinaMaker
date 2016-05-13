@@ -28,7 +28,7 @@
 
 namespace videocore { namespace rtmp {
     
-    H264Packetizer::H264Packetizer( int ctsOffset ) : m_videoTs(0), m_sentConfig(false), m_ctsOffset(ctsOffset)
+    H264Packetizer::H264Packetizer() : m_videoTs(0), m_sentConfig(false)
     {
         
     }
@@ -46,29 +46,29 @@ namespace videocore { namespace rtmp {
         uint8_t nal_type = inBuffer[4] & 0x1F;
         int flags = 0;
         const int flags_size = 5;
-        int dts = inMetadata.dts ;
-        int pts = inMetadata.pts + m_ctsOffset; // correct for pts < dts which some players (ffmpeg) don't like
-        
-        dts = dts > 0 ? dts : pts - m_ctsOffset ;
-        
+        const int ts = inMetadata.timestampDelta;
+
         bool is_config = (nal_type == 7 || nal_type == 8);
         
         
         flags = FLV_CODECID_H264;
         auto output = m_output.lock();
+        RTMPMetadata_t outMeta(inMetadata.timestampDelta);
 
         switch(nal_type) {
             case 7:
                 if(m_sps.size() == 0) {
                     m_sps.resize(inSize-4);
                     memcpy(&m_sps[0], inBuffer+4, inSize-4);
+                    
                 }
-                break;
+                return;
             case 8:
                 if(m_pps.size() == 0) {
                     m_pps.resize(inSize-4);
                     memcpy(&m_pps[0], inBuffer+4, inSize-4);
                 }
+
                 flags |= FLV_FRAME_KEY;
                 break;
             case 5:
@@ -83,10 +83,7 @@ namespace videocore { namespace rtmp {
                 
         }
         
-        
         if(output) {
-            
-            RTMPMetadata_t outMeta(dts);
             std::vector<uint8_t> conf;
             
             if(is_config && m_sps.size() > 0 && m_pps.size() > 0 ) {
@@ -97,7 +94,7 @@ namespace videocore { namespace rtmp {
             
             put_byte(outBuffer, flags);
             put_byte(outBuffer, !is_config);
-            put_be24(outBuffer, pts - dts);             // Decoder delay
+            put_be24(outBuffer, 0);
             
             if(is_config) {
                 // create modified SPS/PPS buffer
@@ -111,7 +108,18 @@ namespace videocore { namespace rtmp {
                 put_buff(outBuffer, inBuffer, inSize);
             }
             
-            outMeta.setData(dts, static_cast<int>(outBuffer.size()), RTMP_PT_VIDEO, kVideoChannelStreamId, nal_type == 5);
+            static auto prev_time = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            
+            auto m_micros = std::chrono::duration_cast<std::chrono::microseconds>(now - prev_time).count();
+            static uint64_t total = 0;
+            static uint64_t count = 0;
+            
+            total+=m_micros;
+            count++;
+            
+            prev_time = now;
+            outMeta.setData(ts, static_cast<int>(outBuffer.size()), RTMP_PT_VIDEO, kVideoChannelStreamId);
             
             output->pushBuffer(&outBuffer[0], outBuffer.size(), outMeta);
         }

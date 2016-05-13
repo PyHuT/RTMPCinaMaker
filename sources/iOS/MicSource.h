@@ -65,7 +65,7 @@ namespace videocore { namespace iOS {
         void setOutput(std::shared_ptr<IOutput> output);
 
         /*! Used by the Audio Unit as a callback method */
-        void inputCallback(uint8_t* data, size_t data_size, int inNumberFrames);
+        void inputCallback(uint8_t* data, size_t data_size);
 
         /*!
          *  \return a reference to the source's Audio Unit

@@ -25,38 +25,12 @@
 #ifndef videocore_Buffer_h
 #define videocore_Buffer_h
 
-#include <memory>
+#import <CoreFoundation/CFByteOrder.h> // TODO: Remove Apple framework reliance in this code.
+
 #include <vector>
 #include <string>
 #include <stdint.h>
 #include <mutex>
-
-#ifdef __APPLE__
-#import <CoreFoundation/CFByteOrder.h> // TODO: Remove Apple framework reliance in this code.
-
-#define double_swap CFConvertFloat64HostToSwapped
-#else
-#include <byteswap.h>
-inline double double_swap(double value){
-    union v {
-        double       f;
-        uint64_t     i;
-    };
-    
-    union v val;
-    
-    val.f = value;
-    val.i = bswap_64(val.i);
-    
-    return val.f;
-}
-
-#define CFConvertDoubleSwappedToHost double_swap
-
-typedef double CFSwappedFloat64;
-
-#endif
-
 
 
 typedef enum
@@ -176,7 +150,7 @@ static inline std::string get_string(uint8_t* buf) {
 static inline void put_double(std::vector<uint8_t>& data, double val) {
     put_byte(data, kAMFNumber);
     
-    CFSwappedFloat64 buf = double_swap(val);
+    CFSwappedFloat64 buf = CFConvertFloat64HostToSwapped(val);
     
     put_buff(data, (uint8_t*)&buf, sizeof(CFSwappedFloat64));
 }
@@ -254,8 +228,6 @@ namespace videocore {
        
         virtual size_t resize(size_t size) {
             if(size > 0) {
-                m_buffer.reset();
-                
                 m_buffer.reset(new uint8_t[size]);
             } else {
                 m_buffer.reset();
@@ -277,28 +249,6 @@ namespace videocore {
         {
             
         };
-        
-        size_t writePosition() const {
-            return m_write;
-        };
-        
-        size_t advanceWrite(size_t offset) {
-            m_mutex.lock();
-            
-            if(offset > m_size) offset = m_size;
-            
-            size_t start = m_write;
-            size_t end = std::min(start+offset, m_total);
-            size_t sz = (end-start);
-            m_write += sz;
-            if(sz < offset) {
-                m_write = (offset - sz);
-            }
-            m_mutex.unlock();
-            
-            return offset;
-        }
-        
         size_t put(uint8_t* data, size_t size) {
             m_mutex.lock();
             if(m_size+size > m_total) size=(m_total-m_size);

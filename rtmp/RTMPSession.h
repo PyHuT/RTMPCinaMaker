@@ -64,11 +64,10 @@ namespace videocore
         kRTMPMetadataTimestamp=0,
         kRTMPMetadataMsgLength,
         kRTMPMetadataMsgTypeId,
-        kRTMPMetadataMsgStreamId,
-        kRTMPMetadataIsKeyframe
+        kRTMPMetadataMsgStreamId
     };
     
-    typedef MetaData<'rtmp', int32_t, int32_t, uint8_t, int32_t, bool> RTMPMetadata_t;
+    typedef MetaData<'rtmp', int32_t, int32_t, uint8_t, int32_t> RTMPMetadata_t;
     
     using RTMPSessionStateCallback = std::function<void(RTMPSession& session, ClientState_t state)>;
     
@@ -94,7 +93,7 @@ namespace videocore
         
         
         void streamStatusChanged(StreamStatus_t status);
-        void write(uint8_t* data, size_t size, std::chrono::steady_clock::time_point packetTime = std::chrono::steady_clock::now(), bool isKeyframe = false);
+        void write(uint8_t* data, size_t size, std::chrono::steady_clock::time_point packetTime = std::chrono::steady_clock::now());
         void dataReceived();
         void setClientState(ClientState_t state);
         void handshake();
@@ -113,8 +112,6 @@ namespace videocore
         void sendDeleteStream();
         void sendSetBufferTime(int milliseconds);
         
-        void increaseBuffer(int64_t size);
-        
         bool parseCurrentData();
         void handleInvoke(uint8_t* p);
         bool handleMessage(uint8_t* p, uint8_t msgTypeId);
@@ -123,18 +120,13 @@ namespace videocore
         int32_t amfPrimitiveObjectSize(uint8_t* p);
         
     private:
-        JobQueue            m_networkQueue;
+        
         JobQueue            m_jobQueue;
-        std::chrono::steady_clock::time_point m_sentKeyframe;
-        std::condition_variable m_networkCond;
-        std::mutex              m_networkMutex;
         
         RingBuffer          m_streamOutRemainder;
         Buffer              m_s1, m_c1;
         
         TCPThroughputAdaptation m_throughputSession;
-        
-        uint64_t            m_previousTs;
         
         std::deque<BufStruct> m_streamOutQueue;
         
@@ -153,7 +145,6 @@ namespace videocore
         
         size_t          m_outChunkSize;
         size_t          m_inChunkSize;
-        int64_t         m_bufferSize;
         
         int32_t         m_streamId;
         int32_t         m_createStreamInvoke;
@@ -166,8 +157,7 @@ namespace videocore
         bool            m_audioStereo;
         
         ClientState_t  m_state;
-      
-        bool            m_clearing;
+        
         bool            m_ending;
     };
 }

@@ -30,12 +30,6 @@
 #import <OpenGLES/ES3/gl.h>
 
 #define BUFFER_OFFSET(i) ((void*)(i))
-#define BUFFER_OFFSET_POSITION BUFFER_OFFSET(0)
-#define BUFFER_OFFSET_TEXTURE  BUFFER_OFFSET(8)
-#define BUFFER_SIZE_POSITION 2
-#define BUFFER_SIZE_TEXTURE  2
-#define BUFFER_STRIDE (sizeof(float) * 4)
-
 #ifdef DEBUG
 #define GL_ERRORS(line) { GLenum glerr; while((glerr = glGetError())) {\
 switch(glerr)\
@@ -60,16 +54,16 @@ break;\
 switch(status)\
 {\
 case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:\
-DLog("OGL(" __FILE__ "):: %d: Incomplete attachment\n", line);\
+printf("OGL(" __FILE__ "):: %d: Incomplete attachment\n", line);\
 break;\
 case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS:\
-DLog("OGL(" __FILE__ "):: %d: Incomplete dimensions\n", line);\
+printf("OGL(" __FILE__ "):: %d: Incomplete dimensions\n", line);\
 break;\
 case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:\
-DLog("OGL(" __FILE__ "):: %d: Incomplete missing attachment\n", line);\
+printf("OGL(" __FILE__ "):: %d: Incomplete missing attachment\n", line);\
 break;\
 case GL_FRAMEBUFFER_UNSUPPORTED:\
-DLog("OGL(" __FILE__ "):: %d: Framebuffer combination unsupported\n",line);\
+printf("OGL(" __FILE__ "):: %d: Framebuffer combination unsupported\n",line);\
 break;\
 } } }
 
@@ -90,7 +84,6 @@ static float s_vbo [] =
     1.f, 1.f,         1.f, 1.f, // 3
     -1.f, 1.f,        0.f, 1.f, // 2
 };
-
 
 
 static const char s_vs [] =

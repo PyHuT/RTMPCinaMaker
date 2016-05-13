@@ -27,7 +27,6 @@
 #define videocore_ISource_hpp
 
 #include <videocore/transforms/IOutput.hpp>
-#include <videocore/filters/IFilter.hpp>
 
 namespace videocore
 {
@@ -45,13 +44,22 @@ namespace videocore
          */
         virtual void setOutput(std::shared_ptr<IOutput> output) = 0;
         
-        virtual void setFilter(std::shared_ptr<IFilter>) {} ;
-        virtual IFilter* const filter() { return nullptr; };
-        
         /*! Virtual destructor */
         virtual ~ISource() {};
     };
     
+    
+    // TODO: Remove and replace with std::enable_shared_from_this on any legacy sources
+    /*! CRTP used to provide a weak_ptr to the class upon instantiation. */
+    template <typename Derived>
+    class StaticSource : public ISource
+    {
+    public:
+        static std::shared_ptr<Derived> createInstance()
+        {
+            return Derived::staticCreateInstance();
+        }
+    } __attribute__ ((deprecated)) ;
 }
 
 #endif

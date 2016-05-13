@@ -26,12 +26,10 @@
 #define __videocore__TCPThroughputAdaptation__
 
 #include <videocore/stream/IThroughputAdaptation.h>
-#include <videocore/system/JobQueue.hpp>
 #include <vector>
 #include <deque>
 #include <thread>
-#include <condition_variable>
-#include <mutex>
+
 namespace videocore {
     class TCPThroughputAdaptation : public IThroughputAdaptation
     {
@@ -49,8 +47,6 @@ namespace videocore {
         
         void addBufferDurationSample(int64_t bufferDuration);
         
-        void reset();
-        void start();
     private:
         void sampleThread();
         
@@ -70,18 +66,15 @@ namespace videocore {
         std::vector<int64_t> m_bufferDurationSamples;
         
         std::deque<float> m_bwSamples;
-        std::deque<int> m_buffGrowth;
         std::deque<float> m_turnSamples;
         std::vector<float> m_bwWeights;
         
         ThroughputCallback m_callback;
         
         int  m_bwSampleCount;
-        int  m_negSampleCount;
         
         float m_previousVector;
         
-        bool m_started;
         bool m_exiting;
         bool m_hasFirstTurndown;
         
